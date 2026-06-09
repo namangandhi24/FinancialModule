@@ -1,0 +1,41 @@
+{
+  "name": "finpilot",
+  "private": true,
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck",
+    "test": "turbo test",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\"",
+    "db:migrate": "pnpm --filter @finpilot/api exec prisma migrate deploy",
+    "db:migrate:dev": "pnpm --filter @finpilot/api db:migrate",
+    "db:seed": "pnpm --filter @finpilot/api db:seed",
+    "db:generate": "pnpm --filter @finpilot/api db:generate",
+    "docker:up": "bash scripts/docker-check.sh && docker compose -f docker/docker-compose.yml up -d postgres redis",
+    "docker:down": "docker compose -f docker/docker-compose.yml down",
+    "docker:logs": "docker compose -f docker/docker-compose.yml logs -f",
+    "docker:reset": "docker compose -f docker/docker-compose.yml down -v",
+    "docker:wait": "bash scripts/wait-for-docker.sh",
+    "setup": "bash scripts/setup.sh",
+    "start": "bash scripts/start.sh"
+  },
+  "devDependencies": {
+    "eslint": "^9.17.0",
+    "prettier": "^3.4.2",
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.18.0"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "pnpm": {
+    "overrides": {
+      "browserslist": "4.24.4",
+      "jsonwebtoken": "9.0.2",
+      "typescript": "5.7.2"
+    }
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

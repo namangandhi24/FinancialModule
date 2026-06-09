@@ -1,0 +1,40 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy-web:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy to Vercel
+        run: echo "Configure Vercel deployment with VERCEL_TOKEN and project settings"
+        # Uncomment when Vercel is configured:
+        # - uses: amondnet/vercel-action@v25
+        #   with:
+        #     vercel-token: ${{ secrets.VERCEL_TOKEN }}
+        #     vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+        #     vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+        #     working-directory: apps/web
+
+  deploy-api:
+    runs-on: ubuntu-latest
+    environment: production
+    needs: deploy-web
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy to Azure Container Apps
+        run: echo "Configure Azure deployment with AZURE_CREDENTIALS and container app settings"
+        # Uncomment when Azure is configured:
+        # - uses: azure/login@v2
+        #   with:
+        #     creds: ${{ secrets.AZURE_CREDENTIALS }}
+        # - run: |
+        #     az containerapp update \
+        #       --name finpilot-api \
+        #       --resource-group finpilot-rg \
+        #       --image ${{ secrets.ACR_LOGIN_SERVER }}/finpilot-api:${{ github.sha }}
