@@ -11,6 +11,7 @@ import { HttpAdapterHost } from '@nestjs/core';
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(GlobalExceptionFilter.name);
+  private readonly isProduction = process.env.NODE_ENV === 'production';
 
   constructor(private readonly httpAdapterHost: HttpAdapterHost) {}
 
@@ -31,12 +32,23 @@ export class GlobalExceptionFilter implements ExceptionFilter {
           : (exceptionResponse as { message?: string | string[] }).message || message;
     } else if (exception instanceof Error) {
       this.logger.error(exception.message, exception.stack);
+      if (!this.isProduction) {
+        message = exception.message;
+      }
     }
 
-    httpAdapter.reply(response, {
-      statusCode: status,
-      message,
-      timestamp: new Date().toISOString(),
-    }, status);
+    if (this.isProduction && status === HttpStatus.INTERNAL_SERVER_ERROR) {
+      message = 'Internal server error';
+    }
+
+    httpAdapter.reply(
+      response,
+      {
+        statusCode: status,
+        message,
+        timestamp: new Date().toISOString(),
+      },
+      status,
+    );
   }
 }

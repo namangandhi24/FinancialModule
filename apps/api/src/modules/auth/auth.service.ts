@@ -9,7 +9,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 import { authenticator } from 'otplib';
-import { v4 as uuidv4 } from 'uuid';
+import { createHash, randomBytes } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   SignupInput,
@@ -21,6 +21,7 @@ import {
 } from '@finpilot/shared';
 import { AuditAction } from '@prisma/client';
 import { EmailService } from '../email/email.service';
+import { EncryptionService } from '../../common/crypto/encryption.service';
 
 const BCRYPT_ROUNDS = 12;
 
@@ -31,6 +32,7 @@ export class AuthService {
     private jwtService: JwtService,
     private configService: ConfigService,
     private emailService: EmailService,
+    private encryptionService: EncryptionService,
   ) {}
 
   async signup(input: SignupInput) {
@@ -86,7 +88,7 @@ export class AuthService {
       }
       const totpValid = authenticator.verify({
         token: input.totpCode,
-        secret: user.totpSecret!,
+        secret: this.decryptTotpSecret(user.totpSecret!),
       });
       if (!totpValid) {
         throw new UnauthorizedException('Invalid 2FA code');
@@ -97,7 +99,7 @@ export class AuthService {
 
     await this.prisma.refreshToken.create({
       data: {
-        token: tokens.refreshToken,
+        token: this.hashToken(tokens.refreshToken),
         userId: user.id,
         userAgent,
         ipAddress,
@@ -131,8 +133,9 @@ export class AuthService {
   }
 
   async refresh(refreshToken: string, userAgent?: string, ipAddress?: string) {
+    const tokenHash = this.hashToken(refreshToken);
     const stored = await this.prisma.refreshToken.findUnique({
-      where: { token: refreshToken },
+      where: { token: tokenHash },
       include: { user: true },
     });
 
@@ -153,7 +156,7 @@ export class AuthService {
 
     await this.prisma.refreshToken.create({
       data: {
-        token: tokens.refreshToken,
+        token: this.hashToken(tokens.refreshToken),
         userId: stored.user.id,
         userAgent,
         ipAddress,
@@ -167,7 +170,7 @@ export class AuthService {
   async logout(refreshToken: string, userId?: string) {
     if (refreshToken) {
       await this.prisma.refreshToken.updateMany({
-        where: { token: refreshToken },
+        where: { token: this.hashToken(refreshToken) },
         data: { revokedAt: new Date() },
       });
     }
@@ -198,7 +201,9 @@ export class AuthService {
       { expiresIn: '1h' },
     );
 
-    console.log(`[DEV] Password reset token for ${email}: ${resetToken}`);
+    if (this.configService.get<string>('nodeEnv') !== 'production') {
+      console.log(`[DEV] Password reset token for ${email}: ${resetToken}`);
+    }
 
     const webUrl = this.configService.get<string>('webUrl');
     await this.emailService.send(
@@ -230,6 +235,8 @@ export class AuthService {
       data: { passwordHash },
     });
 
+    await this.revokeAllSessions(payload.sub);
+
     await this.prisma.auditLog.create({
       data: {
         userId: payload.sub,
@@ -256,6 +263,8 @@ export class AuthService {
       where: { id: userId },
       data: { passwordHash },
     });
+
+    await this.revokeAllSessions(userId);
 
     return { message: 'Password changed successfully' };
   }
@@ -292,7 +301,7 @@ export class AuthService {
     const secret = authenticator.generateSecret();
     await this.prisma.user.update({
       where: { id: userId },
-      data: { totpSecret: secret },
+      data: { totpSecret: this.encryptionService.encrypt(secret) },
     });
 
     const otpauthUrl = authenticator.keyuri(user.email, 'FinPilot AI', secret);
@@ -307,7 +316,7 @@ export class AuthService {
 
     const valid = authenticator.verify({
       token: input.token,
-      secret: user.totpSecret,
+      secret: this.decryptTotpSecret(user.totpSecret),
     });
     if (!valid) {
       throw new BadRequestException('Invalid verification code');
@@ -329,7 +338,7 @@ export class AuthService {
 
     const valid = authenticator.verify({
       token: input.token,
-      secret: user.totpSecret,
+      secret: this.decryptTotpSecret(user.totpSecret),
     });
     if (!valid) {
       throw new BadRequestException('Invalid verification code');
@@ -350,9 +359,24 @@ export class AuthService {
       expiresIn: this.configService.get<string>('jwt.accessExpiry'),
     });
 
-    const refreshToken = uuidv4();
+    const refreshToken = randomBytes(32).toString('hex');
 
     return { accessToken, refreshToken };
+  }
+
+  private hashToken(token: string): string {
+    return createHash('sha256').update(token).digest('hex');
+  }
+
+  private decryptTotpSecret(stored: string): string {
+    return this.encryptionService.decryptIfEncrypted(stored);
+  }
+
+  private async revokeAllSessions(userId: string) {
+    await this.prisma.refreshToken.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
   }
 
   private getRefreshExpiryDate(): Date {

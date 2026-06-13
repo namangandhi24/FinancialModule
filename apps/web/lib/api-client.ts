@@ -30,6 +30,7 @@ class ApiClient {
         credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
+          'X-FinPilot-Client': 'web',
           ...options.headers,
         },
       });
@@ -72,6 +73,9 @@ class ApiClient {
       await fetch(`${this.baseUrl}/auth/refresh`, {
         method: 'POST',
         credentials: 'include',
+        headers: {
+          'X-FinPilot-Client': 'web',
+        },
       });
       return true;
     } catch {
@@ -106,6 +110,9 @@ class ApiClient {
     const response = await fetch(url, {
       method: 'POST',
       credentials: 'include',
+      headers: {
+        'X-FinPilot-Client': 'web',
+      },
       body: formData,
     });
 
